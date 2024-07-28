@@ -1,3 +1,11 @@
+"""Tractor Sync
+    By Michael Fulcher
+
+    Send Donations (recommended $1.50USD) to -
+    PayPal: mjfulcher58@gmail.com
+    Bitcoin: 3DXiJxie6En3wcyxjmKZeY2zFLEmK8y42U
+    Other options @ http://michaelfulcher.yolasite.com/
+"""
 # code
 import sys
 import os
@@ -23,8 +31,9 @@ print(" *    *")
 print("  ****")
 
 CURRENT_DATABASE_VERSION = '1.1.0'
-DB_PATH = r'.\data\tractorsync.db'
-
+RELATIVE_DB_PATH = r'.\data\tractorsync.db'
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, RELATIVE_DB_PATH)
 
 def id_valid_path(a_path) -> tuple:
     """
@@ -48,12 +57,14 @@ def get_file_names(source) -> list:
     :return:
     """
     file_list = []
-    for file in os.listdir(source):
-        try:
+    try:
+        for file in os.listdir(source):
             if os.path.isfile(os.path.join(source, file)):
                 file_list.append(file)
-        except Exception as e:
-            print(f"Failed to list {file} in directory. Reason: {str(e)}")
+    except NotADirectoryError as e:
+        print(f"Failed as provided {source} is not a directory. Reason: {str(e)}")
+    except Exception as e:
+        print(f"Failed to list files in directory. Reason: {str(e)}")
     return file_list
 
 def file_list_transactions(db_cursor, sync_id, file_list):
@@ -65,12 +76,12 @@ def file_list_transactions(db_cursor, sync_id, file_list):
     :return:
     """
     n = 0
-    try:
-        for file in file_list:
+    for file in file_list:
+        try:
             db_cursor.execute("INSERT INTO folderContent (syncFeedInfo_id, fileName, listOrder) VALUES (?, ?, ?);", (sync_id, file, n))
             n += 1
-    except Exception as e:
-        print("Failed to update the database. Reason: ", e)
+        except Exception as e:
+            print("Failed to update the database for file {}. Reason: {}".format(file, e))
 
 # Functions to handle CRUD operations
 def create_new_entry() -> None:
@@ -213,11 +224,17 @@ def main() -> None:
         elif option == '2':
             edit_menu()
         elif option == '3':
-            curr_id = int(input("Enter id of the entry to enable: "))
-            change_status(curr_id, 1)
+            try:
+                curr_id = int(input("Enter id of the entry to enable: "))
+                change_status(curr_id, 1)
+            except ValueError:
+                print("Invalid ID! Try Again...")
         elif option == '4':
-            curr_id = int(input("Enter id of the entry to disable: "))
-            change_status(curr_id, 0)
+            try:
+                curr_id = int(input("Enter id of the entry to disable: "))
+                change_status(curr_id, 0)
+            except ValueError:
+                print("Invalid ID! Try Again...")
         elif option.lower() == 'q':
             break
         else:
