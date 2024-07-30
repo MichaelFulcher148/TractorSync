@@ -1,6 +1,7 @@
 import sys
 import os
 import sqlite3
+from contextlib import closing
 
 print("'make a cube'")
 print("     /|")
@@ -23,28 +24,28 @@ DB_PATH = r'.\data\tractorsync.db'
 
 # Functions to handle CRUD operations
 def create_new_entry(source_folder, destination_folder):
-    with sqlite3.connect(DB_PATH) as conn:
+    with closing(sqlite3.connect(DB_PATH)) as conn:
         cursor = conn.cursor()
         cursor.execute("INSERT INTO syncFeedInfo (sourceFolder, destinationFolder) VALUES (?, ?)", (source_folder, destination_folder))
         conn.commit()
 
 
 def update_entry_source(db_id, source_folder):
-    with sqlite3.connect(DB_PATH) as conn:
+    with closing(sqlite3.connect(DB_PATH)) as conn:
         cursor = conn.cursor()
         cursor.execute("UPDATE syncFeedInfo SET sourceFolder = ? WHERE id = ?", (source_folder, db_id))
         conn.commit()
 
 
 def update_entry_destination(db_id, destination_folder):
-    with sqlite3.connect(DB_PATH) as conn:
+    with closing(sqlite3.connect(DB_PATH)) as conn:
         cursor = conn.cursor()
         cursor.execute("UPDATE syncfeedinfo SET destinationFolder = ? WHERE id = ?", (destination_folder, db_id))
         conn.commit()
 
 
 def read_entries():
-    with sqlite3.connect(DB_PATH) as conn:
+    with closing(sqlite3.connect(DB_PATH)) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM syncFeedInfo")
         rows = cursor.fetchall()
@@ -53,14 +54,14 @@ def read_entries():
 
 
 def update_entry(db_id, source_folder, destination_folder):
-    with sqlite3.connect(DB_PATH) as conn:
+    with closing(sqlite3.connect(DB_PATH)) as conn:
         cursor = conn.cursor()
         cursor.execute("UPDATE syncFeedInfo S ET sourceFolder = ?, destination_folder = ? WHERE id = ?", (source_folder, destination_folder, db_id))
         conn.commit()
 
 
 def delete_entry(db_id):
-    with sqlite3.connect(DB_PATH) as conn:
+    with closing(sqlite3.connect(DB_PATH)) as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM syncFeedInfo WHERE id = ?", (db_id,))
         conn.commit()
@@ -68,7 +69,7 @@ def delete_entry(db_id):
 
 def change_status(db_id, status):
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with closing(sqlite3.connect(DB_PATH)) as conn:
             cursor = conn.cursor()
             cursor.execute("UPDATE syncFeedInfo SET enabled = ? WHERE id = ?", (status, db_id))
             conn.commit()
@@ -137,7 +138,7 @@ if __name__ == "__main__":
                 os.mkdir(r'.\data')
             if not os.path.isfile(DB_PATH):
                 # Establish a connection to the database
-                with sqlite3.connect(DB_PATH) as conn:  # The database name
+                with closing(sqlite3.connect(DB_PATH)) as conn:  # The database name
                     cursor = conn.cursor()
 
                     # Rename and modify the tables as per new requirements
@@ -168,10 +169,22 @@ if __name__ == "__main__":
                     );""")
 
 
-                    cursor.execute("INSERT INTO version(version, major, minor) VALUES (?, ?, ?)", ([int(x) for x in CURRENT_DATABASE_VERSION.split('.')]))
+                    cursor.execute("INSERT INTO version(major, minor, patch) VALUES (?, ?, ?)", ([int(x) for x in CURRENT_DATABASE_VERSION.split('.')]))
 
                     conn.commit()
                     print('Created Database')
+            else:
+                with closing(sqlite3.connect(DB_PATH)) as conn:  # The database name
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT * FROM version ORDER BY timestamp DESC LIMIT 1;")
+                    if cursor.fetchone() is None:
+                        cursor.execute("ALTER TABLE version RENAME COLUMN minor TO patch;")
+                        cursor.execute("ALTER TABLE version RENAME COLUMN major TO minor;")
+                        cursor.execute("ALTER TABLE version RENAME COLUMN version TO major;")
+                        version_list = (1, 0, 2)
+                        cursor.execute("INSERT INTO version(major, minor, patch) VALUES (?, ?, ?)", version_list)
+                        print(f'Database upgraded to version {'.'.join(str(x) for x in version_list)}')
+                        conn.commit()
             main()
         elif sys.argv[1] == '/s':
             if os.path.isfile(DB_PATH):
