@@ -13,6 +13,7 @@ import sqlite3
 import pathlib
 from contextlib import closing
 from platform import node
+from contextlib import closing
 
 print("'make a cube'")
 print("     /|")
@@ -30,10 +31,15 @@ print("*      *")
 print(" *    *")
 print("  ****")
 
-CURRENT_DATABASE_VERSION = '1.1.0'
-RELATIVE_DB_PATH = r'.\data\tractorsync.db'
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, RELATIVE_DB_PATH)
+CURRENT_DATABASE_VERSION = '1.0.2'
+DB_PATH = r'.\data\tractorsync.db'
+
+# Functions to handle CRUD operations
+def create_new_entry(source_folder, destination_folder):
+    with closing(sqlite3.connect(DB_PATH)) as conn:
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO syncFeedInfo (sourceFolder, destinationFolder) VALUES (?, ?)", (source_folder, destination_folder))
+        conn.commit()
 
 def id_valid_path(a_path) -> tuple:
     """
@@ -50,22 +56,11 @@ def id_valid_path(a_path) -> tuple:
         print(f"The path {a_path} does not exist.")
         return False, "E"
 
-def get_file_names(source) -> list:
-    """
-    Gets the names of all files in a folder and returns a list of filenames.
-    :param source:
-    :return:
-    """
-    file_list = []
-    try:
-        for file in os.listdir(source):
-            if os.path.isfile(os.path.join(source, file)):
-                file_list.append(file)
-    except NotADirectoryError as e:
-        print(f"Failed as provided {source} is not a directory. Reason: {str(e)}")
-    except Exception as e:
-        print(f"Failed to list files in directory. Reason: {str(e)}")
-    return file_list
+def update_entry_source(db_id, source_folder):
+    with closing(sqlite3.connect(DB_PATH)) as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE syncFeedInfo SET sourceFolder = ? WHERE id = ?", (source_folder, db_id))
+        conn.commit()
 
 def file_list_transactions(db_cursor, sync_id, file_list):
     """
@@ -83,36 +78,25 @@ def file_list_transactions(db_cursor, sync_id, file_list):
         except Exception as e:
             print("Failed to update the database for file {}. Reason: {}".format(file, e))
 
-# Functions to handle CRUD operations
-def create_new_entry() -> None:
+def update_entry_destination(db_id, destination_folder):
+    with closing(sqlite3.connect(DB_PATH)) as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE syncfeedinfo SET destinationFolder = ? WHERE id = ?", (destination_folder, db_id))
+        conn.commit()
+def update_entry_destination(db_id) -> None:
     """
-    Does the entire data collection process for a new folder."
-    :return: 
-    """""
+    Does the entire data update process for a new destination folder.
+    :param db_id:
+    :return:
+    """
     is_input_valid = False
     while not is_input_valid:
-        source = input("Enter source folder: ")
-        is_input_valid, source_path_type = id_valid_path(source)
-    is_input_valid = False
-    while not is_input_valid:
-        destination = input("Enter destination folder: ")
-        is_input_valid, dest_path_type = id_valid_path(destination)
-    file_list = get_file_names(source)
-    if len(file_list) == 0:
-        print("No files found. - New entry will not be made.")
-        return
-    n = 0
-    try:
-        with closing(sqlite3.connect(DB_PATH)) as db_connection:
-            with closing(db_connection.cursor()) as cur:
-                cur.execute("INSERT INTO syncFeedInfo (sourceFolder, sourcePathType, destinationFolder, destinationPathType) VALUES (?, ?, ?, ?);", (source, source_path_type, destination, dest_path_type))
-                db_id = cur.execute("SELECT id FROM syncFeedInfo ORDER BY id DESC LIMIT 1;").fetchone()[0]
-                file_list_transactions(cur, db_id, file_list)
-                db_connection.commit()
-    except Exception as e:
-        print("Failed to update the database. Reason: ", e)
-    finally:
-        print(f'Sync data created Source: {source} Destination: {destination} and {n} Files found.')
+        destination_folder = input("Enter destination folder: ")
+        is_input_valid, dest_path_type = id_valid_path(destination_folder)
+    with closing(sqlite3.connect(DB_PATH)) as db_connection:
+        with closing(db_connection.cursor()) as cur:
+            cur.execute("UPDATE syncFeedInfo SET destinationFolder = ?, destinationPathType = ? WHERE id = ?;", (destination_folder, dest_path_type, db_id))
+            db_connection.commit()
 
 def update_entry_source(db_id) -> None:
     """
@@ -143,22 +127,13 @@ def update_entry_source(db_id) -> None:
             else:
                 print("New source folder is the same as the old one. No changes were made.")
 
-def update_entry_destination(db_id) -> None:
-    """
-    Does the entire data update process for a new destination folder.
-    :param db_id:
-    :return:
-    """
-    is_input_valid = False
-    while not is_input_valid:
-        destination_folder = input("Enter destination folder: ")
-        is_input_valid, dest_path_type = id_valid_path(destination_folder)
-    with closing(sqlite3.connect(DB_PATH)) as db_connection:
-        with closing(db_connection.cursor()) as cur:
-            cur.execute("UPDATE syncFeedInfo SET destinationFolder = ?, destinationPathType = ? WHERE id = ?;", (destination_folder, dest_path_type, db_id))
-            db_connection.commit()
-
-
+def read_entries():
+    with closing(sqlite3.connect(DB_PATH)) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM syncFeedInfo")
+        rows = cursor.fetchall()
+        for row in rows:
+            print(row)
 def read_entries() -> None:
     with closing(sqlite3.connect(DB_PATH)) as db_connection:
         with closing(db_connection.cursor()) as cur:
@@ -168,6 +143,18 @@ def read_entries() -> None:
                 print(row)
 
 
+def update_entry(db_id, source_folder, destination_folder):
+    with closing(sqlite3.connect(DB_PATH)) as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE syncFeedInfo S ET sourceFolder = ?, destination_folder = ? WHERE id = ?", (source_folder, destination_folder, db_id))
+        conn.commit()
+
+
+def delete_entry(db_id):
+    with closing(sqlite3.connect(DB_PATH)) as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM syncFeedInfo WHERE id = ?", (db_id,))
+        conn.commit()
 def delete_entry(db_id) -> None:
     with closing(sqlite3.connect(DB_PATH)) as db_connection:
         with closing(db_connection.cursor()) as cur:
@@ -248,7 +235,8 @@ if __name__ == "__main__":
             if not os.path.isdir(r'.\data'):
                 os.mkdir(r'.\data')
             if not os.path.isfile(DB_PATH):
-                with closing(sqlite3.connect(DB_PATH)) as conn:
+                # Establish a connection to the database
+                with closing(sqlite3.connect(DB_PATH)) as conn:  # The database name
                     cursor = conn.cursor()
                     cursor.execute('''
                     CREATE TABLE IF NOT EXISTS syncFeedInfo (
@@ -280,55 +268,59 @@ if __name__ == "__main__":
 
                     cursor.execute("INSERT INTO version(major, minor, patch) VALUES (?, ?, ?);", ([int(x) for x in CURRENT_DATABASE_VERSION.split('.')]))
 
+                    cursor.execute("INSERT INTO version(major, minor, patch) VALUES (?, ?, ?)", ([int(x) for x in CURRENT_DATABASE_VERSION.split('.')]))
+
                     conn.commit()
                     print('Created Database')
             else:
                 with closing(sqlite3.connect(DB_PATH)) as conn:
                     cursor = conn.cursor()
-                    cursor.execute("SELECT major, minor, patch FROM version ORDER BY timestamp DESC LIMIT 1;")
-                    version = cursor.fetchone()
-                    if '.'.join(str(x) for x in version) != CURRENT_DATABASE_VERSION:
-                        version_list = list(version)
+                    cursor.execute("SELECT * FROM version ORDER BY timestamp DESC LIMIT 1;")
+                    result = cursor.fetchone()
+                    if result is None:
+                        cursor.execute("ALTER TABLE version RENAME COLUMN minor TO patch;")
+                        cursor.execute("ALTER TABLE version RENAME COLUMN major TO minor;")
+                        cursor.execute("ALTER TABLE version RENAME COLUMN version TO major;")
+                        version_list = (1, 0, 2)
+                        cursor.execute("INSERT INTO version(major, minor, patch) VALUES (?, ?, ?)", version_list)
+                        print(f'Database upgraded to version {'.'.join(str(x) for x in version_list)}')
+                        conn.commit()
+                    else:
+                        version_list = list(result)
+                    if '.'.join(str(x) for x in version_list) != CURRENT_DATABASE_VERSION:
                         if version_list[0] == 1:
                             if version_list[1] == 0:
-                                if version_list[2] == 1:
-                                    cursor.execute("ALTER TABLE version RENAME COLUMN version TO major;")
-                                    cursor.execute("ALTER TABLE version RENAME COLUMN minor TO patch;")
-                                    cursor.execute("ALTER TABLE version RENAME COLUMN major TO minor;")
-                                    version_list[2] = 2
-                                    conn.commit()
-                                if version_list[1] == 0:
-                                    cursor.execute("PRAGMA foreign_keys=off;")
-                                    cursor.execute("ALTER TABLE folderContent RENAME TO old_filenames")
-                                    cursor.execute('''
-                                    CREATE TABLE IF NOT EXISTS folderContent (
-                                        syncFeedInfo_id INTEGER,
-                                        fileName TEXT NOT NULL,
-                                        listOrder INTEGER,
-                                        statusCode CHAR(1) DEFAULT "A",
-                                        enabled INTEGER DEFAULT 1,
-                                        PRIMARY KEY (fileName, syncFeedInfo_id),
-                                        FOREIGN KEY(syncFeedInfo_id) REFERENCES syncFeedInfo(id)
-                                    );''')
-                                    cursor.execute(
-                                        "INSERT INTO folderContent(syncFeedInfo_id, fileName, listOrder, statusCode, enabled) SELECT syncFeedInfo_id, fileName, listOrder, statusCode, enabled FROM old_filenames;")
-                                    cursor.execute("DROP TABLE old_filenames;")
-                                    cursor.execute("ALTER TABLE syncFeedInfo RENAME TO syncFeedInfo_old;")
-                                    cursor.execute('''CREATE TABLE IF NOT EXISTS syncFeedInfo (
-                                                            id INTEGER PRIMARY KEY,
-                                                            sourceFolder TEXT NOT NULL,
-                                                            sourcePathType CHAR(1) NOT NULL,
-                                                            destinationFolder TEXT NOT NULL,
-                                                            destinationPathType CHAR(1) NOT NULL,
-                                                            dateCreated DATETIME DEFAULT CURRENT_TIMESTAMP,
-                                                            enabled INTEGER DEFAULT 1
-                                                        );''')
-                                    cursor.execute(
-                                        "INSERT INTO syncFeedInfo(id, sourceFolder, sourcePathType, destinationFolder, destinationPathType, dateCreated, enabled) SELECT id, sourceFolder, CASE WHEN sourceFolder LIKE '%//%' THEN 'N' ELSE 'L' END, destinationFolder, CASE WHEN destinationFolder LIKE '%//%' THEN 'N' ELSE 'L' END, dateCreated, enabled FROM syncFeedInfo_old;")
-                                    cursor.execute("DROP TABLE syncFeedInfo_old;")
-                                    cursor.execute("PRAGMA foreign_keys=on;")
-                                    version_list[1], version_list[2] = 1, 0
-                                    conn.commit()
+                                cursor.execute("PRAGMA foreign_keys=off;")
+                                cursor.execute("ALTER TABLE folderContent RENAME TO old_filenames")
+                                cursor.execute('''
+                                CREATE TABLE IF NOT EXISTS folderContent (
+                                    syncFeedInfo_id INTEGER,
+                                    fileName TEXT NOT NULL,
+                                    listOrder INTEGER,
+                                    statusCode CHAR(1) DEFAULT "A",
+                                    enabled INTEGER DEFAULT 1,
+                                    PRIMARY KEY (fileName, syncFeedInfo_id),
+                                    FOREIGN KEY(syncFeedInfo_id) REFERENCES syncFeedInfo(id)
+                                );''')
+                                cursor.execute(
+                                    "INSERT INTO folderContent(syncFeedInfo_id, fileName, listOrder, statusCode, enabled) SELECT syncFeedInfo_id, fileName, listOrder, statusCode, enabled FROM old_filenames;")
+                                cursor.execute("DROP TABLE old_filenames;")
+                                cursor.execute("ALTER TABLE syncFeedInfo RENAME TO syncFeedInfo_old;")
+                                cursor.execute('''CREATE TABLE IF NOT EXISTS syncFeedInfo (
+                                                        id INTEGER PRIMARY KEY,
+                                                        sourceFolder TEXT NOT NULL,
+                                                        sourcePathType CHAR(1) NOT NULL,
+                                                        destinationFolder TEXT NOT NULL,
+                                                        destinationPathType CHAR(1) NOT NULL,
+                                                        dateCreated DATETIME DEFAULT CURRENT_TIMESTAMP,
+                                                        enabled INTEGER DEFAULT 1
+                                                    );''')
+                                cursor.execute(
+                                    "INSERT INTO syncFeedInfo(id, sourceFolder, sourcePathType, destinationFolder, destinationPathType, dateCreated, enabled) SELECT id, sourceFolder, CASE WHEN sourceFolder LIKE '%//%' THEN 'N' ELSE 'L' END, destinationFolder, CASE WHEN destinationFolder LIKE '%//%' THEN 'N' ELSE 'L' END, dateCreated, enabled FROM syncFeedInfo_old;")
+                                cursor.execute("DROP TABLE syncFeedInfo_old;")
+                                cursor.execute("PRAGMA foreign_keys=on;")
+                                version_list[1], version_list[2] = 1, 0
+                                conn.commit()
                         cursor.execute("INSERT INTO version (major, minor, patch) VALUES (?, ?, ?)", tuple(version_list))
                         print(f'Database upgraded to version {'.'.join(str(x) for x in version_list)}')
                     else:
