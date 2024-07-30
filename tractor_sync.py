@@ -275,59 +275,9 @@ if __name__ == "__main__":
             else:
                 with closing(sqlite3.connect(DB_PATH)) as conn:
                     cursor = conn.cursor()
-                    cursor.execute("SELECT major, minor, patch FROM version ORDER BY timestamp DESC LIMIT 1;")
-                    version = cursor.fetchone()
-                    if '.'.join(str(x) for x in version) != CURRENT_DATABASE_VERSION:
-                        version_list = list(version)
-                        if version_list[0] == 1:
-                            if version_list[1] == 0:
-                                if version_list[2] == 1:
-                                    cursor.execute("ALTER TABLE version RENAME COLUMN version TO major;")
-                                    cursor.execute("ALTER TABLE version RENAME COLUMN minor TO patch;")
-                                    cursor.execute("ALTER TABLE version RENAME COLUMN major TO minor;")
-                                    version_list[2] = 2
-                                    conn.commit()
-                                if version_list[1] == 0:
-                                    cursor.execute("PRAGMA foreign_keys=off;")
-                                    cursor.execute("ALTER TABLE folderContent RENAME TO old_filenames")
-                                    cursor.execute('''
-                                    CREATE TABLE IF NOT EXISTS folderContent (
-                                        syncFeedInfo_id INTEGER,
-                                        fileName TEXT NOT NULL,
-                                        listOrder INTEGER,
-                                        statusCode CHAR(1) DEFAULT "A",
-                                        enabled INTEGER DEFAULT 1,
-                                        PRIMARY KEY (fileName, syncFeedInfo_id),
-                                        FOREIGN KEY(syncFeedInfo_id) REFERENCES syncFeedInfo(id)
-                                    );''')
-                                    cursor.execute(
-                                        "INSERT INTO folderContent(syncFeedInfo_id, fileName, listOrder, statusCode, enabled) SELECT syncFeedInfo_id, fileName, listOrder, statusCode, enabled FROM old_filenames;")
-                                    cursor.execute("DROP TABLE old_filenames;")
-                                    cursor.execute("ALTER TABLE syncFeedInfo RENAME TO syncFeedInfo_old;")
-                                    cursor.execute('''CREATE TABLE IF NOT EXISTS syncFeedInfo (
-                                                            id INTEGER PRIMARY KEY,
-                                                            sourceFolder TEXT NOT NULL,
-                                                            sourcePathType CHAR(1) NOT NULL,
-                                                            destinationFolder TEXT NOT NULL,
-                                                            destinationPathType CHAR(1) NOT NULL,
-                                                            dateCreated DATETIME DEFAULT CURRENT_TIMESTAMP,
-                                                            enabled INTEGER DEFAULT 1
-                                                        );''')
-                                    cursor.execute(
-                                        "INSERT INTO syncFeedInfo(id, sourceFolder, sourcePathType, destinationFolder, destinationPathType, dateCreated, enabled) SELECT id, sourceFolder, CASE WHEN sourceFolder LIKE '%//%' THEN 'N' ELSE 'L' END, destinationFolder, CASE WHEN destinationFolder LIKE '%//%' THEN 'N' ELSE 'L' END, dateCreated, enabled FROM syncFeedInfo_old;")
-                                    cursor.execute("DROP TABLE syncFeedInfo_old;")
-                                    cursor.execute("PRAGMA foreign_keys=on;")
-                                    version_list[1], version_list[2] = 1, 0
-                                    conn.commit()
-                        cursor.execute("INSERT INTO version (major, minor, patch) VALUES (?, ?, ?)", tuple(version_list))
-                        print(f'Database upgraded to version {'.'.join(str(x) for x in version_list)}')
-                    else:
-                        print(f"Current database version: {'.'.join(str(x) for x in version)}")
-            else:
-                with closing(sqlite3.connect(DB_PATH)) as conn:  # The database name
-                    cursor = conn.cursor()
                     cursor.execute("SELECT * FROM version ORDER BY timestamp DESC LIMIT 1;")
-                    if cursor.fetchone() is None:
+                    result = cursor.fetchone()
+                    if result is None:
                         cursor.execute("ALTER TABLE version RENAME COLUMN minor TO patch;")
                         cursor.execute("ALTER TABLE version RENAME COLUMN major TO minor;")
                         cursor.execute("ALTER TABLE version RENAME COLUMN version TO major;")
@@ -335,6 +285,46 @@ if __name__ == "__main__":
                         cursor.execute("INSERT INTO version(major, minor, patch) VALUES (?, ?, ?)", version_list)
                         print(f'Database upgraded to version {'.'.join(str(x) for x in version_list)}')
                         conn.commit()
+                    else:
+                        version_list = list(result)
+                    if '.'.join(str(x) for x in version_list) != CURRENT_DATABASE_VERSION:
+                        if version_list[0] == 1:
+                            if version_list[1] == 0:
+                                cursor.execute("PRAGMA foreign_keys=off;")
+                                cursor.execute("ALTER TABLE folderContent RENAME TO old_filenames")
+                                cursor.execute('''
+                                CREATE TABLE IF NOT EXISTS folderContent (
+                                    syncFeedInfo_id INTEGER,
+                                    fileName TEXT NOT NULL,
+                                    listOrder INTEGER,
+                                    statusCode CHAR(1) DEFAULT "A",
+                                    enabled INTEGER DEFAULT 1,
+                                    PRIMARY KEY (fileName, syncFeedInfo_id),
+                                    FOREIGN KEY(syncFeedInfo_id) REFERENCES syncFeedInfo(id)
+                                );''')
+                                cursor.execute(
+                                    "INSERT INTO folderContent(syncFeedInfo_id, fileName, listOrder, statusCode, enabled) SELECT syncFeedInfo_id, fileName, listOrder, statusCode, enabled FROM old_filenames;")
+                                cursor.execute("DROP TABLE old_filenames;")
+                                cursor.execute("ALTER TABLE syncFeedInfo RENAME TO syncFeedInfo_old;")
+                                cursor.execute('''CREATE TABLE IF NOT EXISTS syncFeedInfo (
+                                                        id INTEGER PRIMARY KEY,
+                                                        sourceFolder TEXT NOT NULL,
+                                                        sourcePathType CHAR(1) NOT NULL,
+                                                        destinationFolder TEXT NOT NULL,
+                                                        destinationPathType CHAR(1) NOT NULL,
+                                                        dateCreated DATETIME DEFAULT CURRENT_TIMESTAMP,
+                                                        enabled INTEGER DEFAULT 1
+                                                    );''')
+                                cursor.execute(
+                                    "INSERT INTO syncFeedInfo(id, sourceFolder, sourcePathType, destinationFolder, destinationPathType, dateCreated, enabled) SELECT id, sourceFolder, CASE WHEN sourceFolder LIKE '%//%' THEN 'N' ELSE 'L' END, destinationFolder, CASE WHEN destinationFolder LIKE '%//%' THEN 'N' ELSE 'L' END, dateCreated, enabled FROM syncFeedInfo_old;")
+                                cursor.execute("DROP TABLE syncFeedInfo_old;")
+                                cursor.execute("PRAGMA foreign_keys=on;")
+                                version_list[1], version_list[2] = 1, 0
+                                conn.commit()
+                        cursor.execute("INSERT INTO version (major, minor, patch) VALUES (?, ?, ?)", tuple(version_list))
+                        print(f'Database upgraded to version {'.'.join(str(x) for x in version_list)}')
+                    else:
+                        print(f"Current database version: {'.'.join(str(x) for x in version)}")
             main()
         elif sys.argv[1] == '/s':
             if os.path.isfile(DB_PATH):
