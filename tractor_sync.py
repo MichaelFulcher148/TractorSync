@@ -11,7 +11,6 @@ import sys
 import os
 import sqlite3
 import pathlib
-from contextlib import closing
 from platform import node
 from contextlib import closing
 
@@ -31,36 +30,49 @@ print("*      *")
 print(" *    *")
 print("  ****")
 
-CURRENT_DATABASE_VERSION = '1.0.2'
-DB_PATH = r'.\data\tractorsync.db'
+CURRENT_DATABASE_VERSION = '1.1.0'
+RELATIVE_DB_PATH = r'.\data\tractorsync.db'
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, RELATIVE_DB_PATH)
+CURRENT_NODE = node()
 
 # Functions to handle CRUD operations
-def create_new_entry(source_folder, destination_folder):
-    with closing(sqlite3.connect(DB_PATH)) as conn:
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO syncFeedInfo (sourceFolder, destinationFolder) VALUES (?, ?)", (source_folder, destination_folder))
-        conn.commit()
-
 def id_valid_path(a_path) -> tuple:
     """
     Helper to confirm if the folder path provided is one that exists at that time.
     :param a_path:
     :return:
     """
-    if os.path.exists(a_path):
+    if os.path.exists(a_path) or pathlib.Path(a_path).exists():
         print(f"The path {a_path} exists.")
+        if a_path.find("\\\\") != -1:
+            return True, "N"
         return True, "L"
-    elif pathlib.Path(a_path).exists():
-        return True, "N"
-    else:
-        print(f"The path {a_path} does not exist.")
-        return False, "E"
+    print(f"The path {a_path} does not exist.")
+    return False, "E"
 
 def update_entry_source(db_id, source_folder):
-    with closing(sqlite3.connect(DB_PATH)) as conn:
-        cursor = conn.cursor()
-        cursor.execute("UPDATE syncFeedInfo SET sourceFolder = ? WHERE id = ?", (source_folder, db_id))
-        conn.commit()
+    with closing(sqlite3.connect(DB_PATH)) as db_connection:
+        with closing(db_connection.cursor()) as cur:
+            cur.execute("UPDATE syncFeedInfo SET sourceFolder = ? WHERE id = ?", (source_folder, db_id))
+            conn.commit()
+
+def get_file_names(source) -> list:
+    """
+    Gets the names of all files in a folder and returns a list of filenames.
+    :param source:
+    :return:
+    """
+    file_list = []
+    try:
+        for file in os.listdir(source):
+            if os.path.isfile(os.path.join(source, file)):
+                file_list.append(file)
+    except NotADirectoryError as e:
+        print(f"Failed as provided {source} is not a directory. Reason: {str(e)}")
+    except Exception as e:
+        print(f"Failed to list files in directory. Reason: {str(e)}")
+    return file_list
 
 def file_list_transactions(db_cursor, sync_id, file_list):
     """
@@ -68,7 +80,7 @@ def file_list_transactions(db_cursor, sync_id, file_list):
     :param db_cursor:
     :param sync_id:
     :param file_list:
-    :return:
+    :return n:
     """
     n = 0
     for file in file_list:
@@ -77,12 +89,8 @@ def file_list_transactions(db_cursor, sync_id, file_list):
             n += 1
         except Exception as e:
             print("Failed to update the database for file {}. Reason: {}".format(file, e))
+    return n
 
-def update_entry_destination(db_id, destination_folder):
-    with closing(sqlite3.connect(DB_PATH)) as conn:
-        cursor = conn.cursor()
-        cursor.execute("UPDATE syncfeedinfo SET destinationFolder = ? WHERE id = ?", (destination_folder, db_id))
-        conn.commit()
 def update_entry_destination(db_id) -> None:
     """
     Does the entire data update process for a new destination folder.
@@ -98,6 +106,35 @@ def update_entry_destination(db_id) -> None:
             cur.execute("UPDATE syncFeedInfo SET destinationFolder = ?, destinationPathType = ? WHERE id = ?;", (destination_folder, dest_path_type, db_id))
             db_connection.commit()
 
+def create_new_entry() -> None:
+    """
+    Does the entire data collection process for a new folder."
+    :return: 
+    """""
+    is_input_valid = False
+    while not is_input_valid:
+        source = input("Enter source folder: ")
+        is_input_valid, source_path_type = id_valid_path(source)
+    is_input_valid = False
+    while not is_input_valid:
+        destination = input("Enter destination folder: ")
+        is_input_valid, dest_path_type = id_valid_path(destination)
+    file_list = get_file_names(source)
+    if len(file_list) == 0:
+        print("No files found. - New entry will not be made.")
+        return
+    try:
+        with closing(sqlite3.connect(DB_PATH)) as db_connection:
+            with closing(db_connection.cursor()) as cur:
+                cur.execute("INSERT INTO syncFeedInfo (sourceFolder, sourcePathType, destinationFolder, destinationPathType) VALUES (?, ?, ?, ?);", (source, source_path_type, destination, dest_path_type))
+                db_id = cur.execute("SELECT id FROM syncFeedInfo ORDER BY id DESC LIMIT 1;").fetchone()[0]
+                length = file_list_transactions(cur, db_id, file_list)
+                db_connection.commit()
+    except Exception as e:
+        print("Failed to update the database. Reason: ", e)
+    finally:
+        print(f'Sync data created Source: {source} Destination: {destination} and {length} Files found.')
+
 def update_entry_source(db_id) -> None:
     """
     Now does the entire data update process for a new source folder.
@@ -110,7 +147,7 @@ def update_entry_source(db_id) -> None:
         is_input_valid, source_path_type = id_valid_path(source_folder)
     with closing(sqlite3.connect(DB_PATH)) as db_connection:
         with closing(db_connection.cursor()) as cur:
-            cur.execute("SELECT sourceFolder FROM syncFeedInfo WHERE id = ?", (db_id,))
+            cur.execute("SELECT sourceFolder FROM syncFeedInfo WHERE id = ?;", (db_id,))
             old_source_folder = cur.fetchone()[0]
             if old_source_folder != source_folder:
                 file_search_answer = input("This will remove the file information.\nDo you want to continue? [Y/N] ")
@@ -120,48 +157,26 @@ def update_entry_source(db_id) -> None:
                     if len(file_list) == 0:
                         print("No files found.")
                         return
-                    file_list_transactions(cur, db_id, file_list)
+                    length = file_list_transactions(cur, db_id, file_list)
                     cur.execute("UPDATE syncFeedInfo SET sourceFolder = ?, sourcePathType = ? WHERE id = ?;", (source_folder, source_path_type, db_id))
                     db_connection.commit()
-                    print("Source folder was updated.")
+                    print(f"Source folder was updated, with {length} file(s) added.")
             else:
                 print("New source folder is the same as the old one. No changes were made.")
 
 def read_entries():
-    with closing(sqlite3.connect(DB_PATH)) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM syncFeedInfo")
-        rows = cursor.fetchall()
-        for row in rows:
-            print(row)
-def read_entries() -> None:
     with closing(sqlite3.connect(DB_PATH)) as db_connection:
         with closing(db_connection.cursor()) as cur:
-            cur.execute("SELECT * FROM syncFeedInfo;")
-            rows = cur.fetchall()
-            for row in rows:
+            cur.execute("SELECT * FROM syncFeedInfo")
+            for row in cur.fetchall():
                 print(row)
 
-
-def update_entry(db_id, source_folder, destination_folder):
-    with closing(sqlite3.connect(DB_PATH)) as conn:
-        cursor = conn.cursor()
-        cursor.execute("UPDATE syncFeedInfo S ET sourceFolder = ?, destination_folder = ? WHERE id = ?", (source_folder, destination_folder, db_id))
-        conn.commit()
-
-
-def delete_entry(db_id):
-    with closing(sqlite3.connect(DB_PATH)) as conn:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM syncFeedInfo WHERE id = ?", (db_id,))
-        conn.commit()
 def delete_entry(db_id) -> None:
     with closing(sqlite3.connect(DB_PATH)) as db_connection:
         with closing(db_connection.cursor()) as cur:
             cur.execute("DELETE FROM syncFeedInfo WHERE id = ?;", (db_id,))
             cur.execute("DELETE FROM folderContent WHERE syncFeedInfo_id = ?;", (db_id,))
             db_connection.commit()
-
 
 def change_status(db_id, status) -> None:
     try:
@@ -171,7 +186,6 @@ def change_status(db_id, status) -> None:
                 db_connection.commit()
     except sqlite3.Error as e:
         print(f"An error occurred: {e}")
-
 
 def edit_menu() -> None:
     while True:
@@ -194,7 +208,6 @@ def edit_menu() -> None:
             break
         else:
             print("Invalid option, please try again.")
-
 
 def main() -> None:
     while True:
@@ -227,7 +240,6 @@ def main() -> None:
         else:
             print("Invalid option, please try again.")
 
-
 if __name__ == "__main__":
     # Check command line arguments
     if len(sys.argv) > 1:
@@ -236,7 +248,7 @@ if __name__ == "__main__":
                 os.mkdir(r'.\data')
             if not os.path.isfile(DB_PATH):
                 # Establish a connection to the database
-                with closing(sqlite3.connect(DB_PATH)) as conn:  # The database name
+                with closing(sqlite3.connect(DB_PATH)) as conn:
                     cursor = conn.cursor()
                     cursor.execute('''
                     CREATE TABLE IF NOT EXISTS syncFeedInfo (
@@ -287,11 +299,11 @@ if __name__ == "__main__":
                         conn.commit()
                     else:
                         version_list = list(result)
-                    if '.'.join(str(x) for x in version_list) != CURRENT_DATABASE_VERSION:
-                        if version_list[0] == 1:
-                            if version_list[1] == 0:
+                    if '.'.join(str(x) for x in version_list[1:]) != CURRENT_DATABASE_VERSION:
+                        if version_list[1] == 1:
+                            if version_list[2] == 0:
                                 cursor.execute("PRAGMA foreign_keys=off;")
-                                cursor.execute("ALTER TABLE folderContent RENAME TO old_filenames")
+                                cursor.execute("ALTER TABLE filenames RENAME TO old_filenames;")
                                 cursor.execute('''
                                 CREATE TABLE IF NOT EXISTS folderContent (
                                     syncFeedInfo_id INTEGER,
@@ -302,8 +314,7 @@ if __name__ == "__main__":
                                     PRIMARY KEY (fileName, syncFeedInfo_id),
                                     FOREIGN KEY(syncFeedInfo_id) REFERENCES syncFeedInfo(id)
                                 );''')
-                                cursor.execute(
-                                    "INSERT INTO folderContent(syncFeedInfo_id, fileName, listOrder, statusCode, enabled) SELECT syncFeedInfo_id, fileName, listOrder, statusCode, enabled FROM old_filenames;")
+                                cursor.execute("INSERT INTO folderContent(syncFeedInfo_id, fileName, listOrder, statusCode, enabled) SELECT syncFeedInfo_id, fileName, listOrder, statusCode, enabled FROM old_filenames;")
                                 cursor.execute("DROP TABLE old_filenames;")
                                 cursor.execute("ALTER TABLE syncFeedInfo RENAME TO syncFeedInfo_old;")
                                 cursor.execute('''CREATE TABLE IF NOT EXISTS syncFeedInfo (
@@ -315,16 +326,16 @@ if __name__ == "__main__":
                                                         dateCreated DATETIME DEFAULT CURRENT_TIMESTAMP,
                                                         enabled INTEGER DEFAULT 1
                                                     );''')
-                                cursor.execute(
-                                    "INSERT INTO syncFeedInfo(id, sourceFolder, sourcePathType, destinationFolder, destinationPathType, dateCreated, enabled) SELECT id, sourceFolder, CASE WHEN sourceFolder LIKE '%//%' THEN 'N' ELSE 'L' END, destinationFolder, CASE WHEN destinationFolder LIKE '%//%' THEN 'N' ELSE 'L' END, dateCreated, enabled FROM syncFeedInfo_old;")
+                                cursor.execute("INSERT INTO syncFeedInfo(id, sourceFolder, sourcePathType, destinationFolder, destinationPathType, dateCreated, enabled) SELECT id, sourceFolder, CASE WHEN sourceFolder LIKE '%\\\\%' THEN 'N' ELSE 'L' END, destinationFolder, CASE WHEN destinationFolder LIKE '%\\\\%' THEN 'N' ELSE 'L' END, dateCreated, enabled FROM syncFeedInfo_old;")
                                 cursor.execute("DROP TABLE syncFeedInfo_old;")
                                 cursor.execute("PRAGMA foreign_keys=on;")
-                                version_list[1], version_list[2] = 1, 0
-                                conn.commit()
-                        cursor.execute("INSERT INTO version (major, minor, patch) VALUES (?, ?, ?)", tuple(version_list))
-                        print(f'Database upgraded to version {'.'.join(str(x) for x in version_list)}')
+                                version_list[2], version_list[3] = 1, 0
+                                print(version_list)
+                                cursor.execute("INSERT INTO version (major, minor, patch) VALUES (?, ?, ?)", tuple(version_list[1:]))
+                                print(f'Database upgraded to version {'.'.join(str(x) for x in version_list[1:])}')
+                        conn.commit()
                     else:
-                        print(f"Current database version: {'.'.join(str(x) for x in version)}")
+                        print(f"Current database version: {'.'.join(str(x) for x in version_list[1:])}")
             main()
         elif sys.argv[1] == '/s':
             if os.path.isfile(DB_PATH):
@@ -332,7 +343,7 @@ if __name__ == "__main__":
                     cursor = conn.cursor()
                     cursor.execute("SELECT major, minor, patch FROM version ORDER BY timestamp DESC LIMIT 1;")
                     version = cursor.fetchone()
-                    if '.'.join(str(x) for x in version) == CURRENT_DATABASE_VERSION:
+                    if '.'.join(str(x) for x in version[1:]) == CURRENT_DATABASE_VERSION:
                         print(f"Current database version: {'.'.join(str(x) for x in version)}")
                     else:
                         print(f"Current database out of date, run /m to update.")
