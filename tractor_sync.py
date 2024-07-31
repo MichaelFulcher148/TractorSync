@@ -30,7 +30,7 @@ print("*      *")
 print(" *    *")
 print("  ****")
 
-CURRENT_DATABASE_VERSION = '1.1.0'
+CURRENT_DATABASE_VERSION = '1.1.1'
 RELATIVE_DB_PATH = r'.\data\tractorsync.db'
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, RELATIVE_DB_PATH)
@@ -126,7 +126,7 @@ def create_new_entry() -> None:
     try:
         with closing(sqlite3.connect(DB_PATH)) as db_connection:
             with closing(db_connection.cursor()) as cur:
-                cur.execute("INSERT INTO syncFeedInfo (sourceFolder, sourcePathType, destinationFolder, destinationPathType) VALUES (?, ?, ?, ?);", (source, source_path_type, destination, dest_path_type))
+                cur.execute("INSERT INTO syncFeedInfo (sourceFolder, sourcePathType, destinationFolder, destinationPathType, pcName) VALUES (?, ?, ?, ?, ?);", (source, source_path_type, destination, dest_path_type, CURRENT_NODE))
                 db_id = cur.execute("SELECT id FROM syncFeedInfo ORDER BY id DESC LIMIT 1;").fetchone()[0]
                 length = file_list_transactions(cur, db_id, file_list)
                 db_connection.commit()
@@ -258,6 +258,7 @@ if __name__ == "__main__":
                         destinationFolder TEXT NOT NULL,
                         destinationPathType CHAR(1) NOT NULL,
                         dateCreated DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        pcName TEXT,
                         enabled INTEGER DEFAULT 1
                     );''')
 
@@ -279,8 +280,6 @@ if __name__ == "__main__":
                     );""")
 
                     cursor.execute("INSERT INTO version(major, minor, patch) VALUES (?, ?, ?);", ([int(x) for x in CURRENT_DATABASE_VERSION.split('.')]))
-
-                    cursor.execute("INSERT INTO version(major, minor, patch) VALUES (?, ?, ?)", ([int(x) for x in CURRENT_DATABASE_VERSION.split('.')]))
 
                     conn.commit()
                     print('Created Database')
@@ -330,9 +329,11 @@ if __name__ == "__main__":
                                 cursor.execute("DROP TABLE syncFeedInfo_old;")
                                 cursor.execute("PRAGMA foreign_keys=on;")
                                 version_list[2], version_list[3] = 1, 0
-                                print(version_list)
-                                cursor.execute("INSERT INTO version (major, minor, patch) VALUES (?, ?, ?)", tuple(version_list[1:]))
-                                print(f'Database upgraded to version {'.'.join(str(x) for x in version_list[1:])}')
+                            if version_list[3] == 0:
+                                cursor.execute("ALTER TABLE syncFeedInfo ADD COLUMN pcName TEXT;")
+                                version_list[3] = 1
+                            cursor.execute("INSERT INTO version (major, minor, patch) VALUES (?, ?, ?)", tuple(version_list[1:]))
+                            print(f'Database upgraded to version {'.'.join(str(x) for x in version_list[1:])}')
                         conn.commit()
                     else:
                         print(f"Current database version: {'.'.join(str(x) for x in version_list[1:])}")
@@ -340,20 +341,19 @@ if __name__ == "__main__":
         elif sys.argv[1] == '/s':
             if os.path.isfile(DB_PATH):
                 with closing(sqlite3.connect(DB_PATH)) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT major, minor, patch FROM version ORDER BY timestamp DESC LIMIT 1;")
-                    version = cursor.fetchone()
-                    if '.'.join(str(x) for x in version[1:]) == CURRENT_DATABASE_VERSION:
-                        print(f"Current database version: {'.'.join(str(x) for x in version)}")
-                    else:
-                        print(f"Current database out of date, run /m to update.")
-                if node() == 'MICHAEL-PC2':
-                    if os.path.isfile(DB_PATH):
-                        print("Found Database, sync not implemented")
-                    else:
-                        print("Please run the script with the /m argument to create or access the database.")
-                else:
-                    print('Not running on MICHAEL-PC2.')
+                    with closing(conn.cursor()) as cursor:
+                        cursor.execute("SELECT major, minor, patch FROM version ORDER BY timestamp DESC LIMIT 1;")
+                        version = cursor.fetchone()
+                        if '.'.join(str(x) for x in version) == CURRENT_DATABASE_VERSION:
+                            print(f"Current database version: {'.'.join(str(x) for x in version)}")
+                            result = cursor.execute("SELECT * FROM syncfeedinfo WHERE enabled = 1 AND pcName = (?);", (CURRENT_NODE,)).fetchall()
+                            if len(result) == 0:
+                                print("Please run the script with the /m argument to create or access the database.")
+                            else:
+                                for line in result:
+                                    print(line)
+                        else:
+                            print(f"Current database out of date, run /m to update.")
             else:
                 print("Please run the script with the /m argument to create or access the database.")
     else:

@@ -8,7 +8,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="920d6ed5-e39f-4d7a-b64c-144c58ccd078" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/d954df42-431f-4ace-af61-290ab19c9f0a.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/d954df42-431f-4ace-af61-290ab19c9f0a.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/test/test_functions.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/test/test_interface.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/tractorsync - version1-0-2.db" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/data/tractorsync.db" beforeDir="false" afterPath="$PROJECT_DIR$/data/tractorsync.db" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/tractor_sync.py" beforeDir="false" afterPath="$PROJECT_DIR$/tractor_sync.py" afterDir="false" />
     </list>
@@ -16,6 +18,13 @@
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Python Script" />
+      </list>
+    </option>
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -35,7 +44,7 @@
   "keyToString": {
     "Python.tractor_sync.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
-    "last_opened_file_path": "C:/Users/warha/OneDrive/Scripts/TractorSync/old",
+    "last_opened_file_path": "C:/Users/warha/OneDrive/Scripts/TractorSync/test",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -55,6 +64,7 @@
 }]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\Users\warha\OneDrive\Scripts\TractorSync\test" />
       <recent name="C:\Users\warha\OneDrive\Scripts\TractorSync\old" />
     </key>
   </component>
@@ -91,6 +101,7 @@
       <workItem from="1722366475081" duration="9000" />
       <workItem from="1722368994132" duration="1127000" />
       <workItem from="1722376064345" duration="3130000" />
+      <workItem from="1722387037526" duration="4873000" />
     </task>
     <servers />
   </component>
