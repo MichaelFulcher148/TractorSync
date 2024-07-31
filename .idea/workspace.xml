@@ -8,11 +8,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="920d6ed5-e39f-4d7a-b64c-144c58ccd078" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/test/test_functions.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/test/test_interface.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/tractorsync - version1-0-2.db" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/data/tractorsync.db" beforeDir="false" afterPath="$PROJECT_DIR$/data/tractorsync.db" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tractor_sync.py" beforeDir="false" afterPath="$PROJECT_DIR$/tractor_sync.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -101,7 +98,7 @@
       <workItem from="1722366475081" duration="9000" />
       <workItem from="1722368994132" duration="1127000" />
       <workItem from="1722376064345" duration="3130000" />
-      <workItem from="1722387037526" duration="4873000" />
+      <workItem from="1722387037526" duration="5288000" />
     </task>
     <servers />
   </component>

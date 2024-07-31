@@ -187,11 +187,49 @@ def change_status(db_id, status) -> None:
     except sqlite3.Error as e:
         print(f"An error occurred: {e}")
 
+def enable_disable_files(db_id, file_state, file_name):
+    with closing(sqlite3.connect(DB_PATH)) as db_connection:
+        with closing(db_connection.cursor()) as cur:
+            cur.execute("UPDATE foldercontent SET enabled = ? WHERE syncFeedInfo_id = ? AND fileName = ?;", (file_state, db_id, file_name))
+            db_connection.commit()
+
+def enable_disable_files_by_extension(db_id, file_extension, file_state):
+    with closing(sqlite3.connect(DB_PATH)) as db_connection:
+        with closing(db_connection.cursor()) as cur:
+            cur.execute("UPDATE folderContent SET enabled = ? WHERE syncFeedInfo_id = ? AND fileName LIKE '%' || ? || '%';", (file_state, db_id, file_extension))
+            db_connection.commit()
+
+def edit_file_state(db_id) -> None:
+    while True:
+        with closing(sqlite3.connect(DB_PATH)) as db_connection:
+            with closing(db_connection.cursor()) as cur:
+                results = cur.execute("SELECT * FROM folderContent WHERE syncFeedInfo_id = ?;", (db_id,))
+                for row in results:
+                    print(row)
+        print("1. Enable/disable by name files")
+        print("2. Enable/disable files by extension")
+        print("Q. Go back")
+        option = input("Select an option: ")
+
+        if option == '1':
+            file_extension = input("Enter file name: ")
+            state = int(input("Enter state (1 - Enabled, 0 - Disabled): "))
+            enable_disable_files(db_id, state, file_extension)
+        elif option == '2':
+            file_extension = input("Enter file extension: ")
+            state = int(input("Enter state (1 - Enabled, 0 - Disabled): "))
+            enable_disable_files_by_extension(db_id, file_extension, state)
+        elif option.lower() == 'q':
+            break
+        else:
+            print("Invalid option, please try again.")
+
 def edit_menu() -> None:
     while True:
         print("1. Update source folder")
         print("2. Update destination folder")
         print("3. Delete entry")
+        print("4. Enable/disable files")
         print("Q. Go back")
         option = input("Select an option: ")
 
@@ -204,6 +242,9 @@ def edit_menu() -> None:
         elif option == '3':
             curr_id = int(input("Enter id of the entry to delete: "))
             delete_entry(curr_id)
+        elif option == '4':
+            curr_id = int(input("Enter id of the source folder to edit: "))
+            edit_file_state(curr_id)
         elif option.lower() == 'q':
             break
         else:
