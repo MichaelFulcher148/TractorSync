@@ -8,19 +8,14 @@
 Have a folder hold only a single file at a time of a source folder, goto menu to make the file advance to the next.  
 **Platform:** Windows command prompt
 
-## Instructions:
+## Install Instructions:
     Download: Click "Code" button then click "Download ZIP"
     
     Install Python 3.12+  
     Make sure you enable "add to PATH" during install.
         
     Copy to a folder the following files:
-    tractor_sync.py and tools folder
-    
-### Run script:
-    Open Command Prompt:
-    Goto folder containing the tractor_sync.py file
-    Run Command: tractor_sync.py /m
+    tractor_sync.py
 
 ### How to use:
 **Step 1:** Go into menu mode tractor_sync.py /m  

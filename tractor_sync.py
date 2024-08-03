@@ -9,6 +9,7 @@
 # code
 import sys
 import os
+import shutil
 import sqlite3
 import pathlib
 from platform import node
@@ -30,32 +31,29 @@ print("*      *")
 print(" *    *")
 print("  ****")
 
-CURRENT_DATABASE_VERSION = '1.1.1'
+CURRENT_DATABASE_VERSION = '1.1.2'
 RELATIVE_DB_PATH = r'.\data\tractorsync.db'
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, RELATIVE_DB_PATH)
 CURRENT_NODE = node()
 
 # Functions to handle CRUD operations
-def id_valid_path(a_path) -> tuple:
+def is_valid_path(a_path, feedback=True) -> tuple:
     """
     Helper to confirm if the folder path provided is one that exists at that time.
+    :param feedback:
     :param a_path:
     :return:
     """
     if os.path.exists(a_path) or pathlib.Path(a_path).exists():
-        print(f"The path {a_path} exists.")
+        if feedback:
+            print(f"The path {a_path} exists.")
         if a_path.find("\\\\") != -1:
             return True, "N"
         return True, "L"
-    print(f"The path {a_path} does not exist.")
+    if feedback:
+        print(f"The path {a_path} does not exist.")
     return False, "E"
-
-def update_entry_source(db_id, source_folder):
-    with closing(sqlite3.connect(DB_PATH)) as db_connection:
-        with closing(db_connection.cursor()) as cur:
-            cur.execute("UPDATE syncFeedInfo SET sourceFolder = ? WHERE id = ?", (source_folder, db_id))
-            conn.commit()
 
 def get_file_names(source) -> list:
     """
@@ -74,7 +72,7 @@ def get_file_names(source) -> list:
         print(f"Failed to list files in directory. Reason: {str(e)}")
     return file_list
 
-def file_list_transactions(db_cursor, sync_id, file_list):
+def file_list_insert_db_transactions(db_cursor, sync_id, file_list):
     """
     For use by an open sqlite3 connection generates and submits the transaction for a file linked to SyncFeedInfo_id
     :param db_cursor:
@@ -100,7 +98,7 @@ def update_entry_destination(db_id) -> None:
     is_input_valid = False
     while not is_input_valid:
         destination_folder = input("Enter destination folder: ")
-        is_input_valid, dest_path_type = id_valid_path(destination_folder)
+        is_input_valid, dest_path_type = is_valid_path(destination_folder)
     with closing(sqlite3.connect(DB_PATH)) as db_connection:
         with closing(db_connection.cursor()) as cur:
             cur.execute("UPDATE syncFeedInfo SET destinationFolder = ?, destinationPathType = ? WHERE id = ?;", (destination_folder, dest_path_type, db_id))
@@ -114,11 +112,11 @@ def create_new_entry() -> None:
     is_input_valid = False
     while not is_input_valid:
         source = input("Enter source folder: ")
-        is_input_valid, source_path_type = id_valid_path(source)
+        is_input_valid, source_path_type = is_valid_path(source)
     is_input_valid = False
     while not is_input_valid:
         destination = input("Enter destination folder: ")
-        is_input_valid, dest_path_type = id_valid_path(destination)
+        is_input_valid, dest_path_type = is_valid_path(destination)
     file_list = get_file_names(source)
     if len(file_list) == 0:
         print("No files found. - New entry will not be made.")
@@ -128,7 +126,7 @@ def create_new_entry() -> None:
             with closing(db_connection.cursor()) as cur:
                 cur.execute("INSERT INTO syncFeedInfo (sourceFolder, sourcePathType, destinationFolder, destinationPathType, pcName) VALUES (?, ?, ?, ?, ?);", (source, source_path_type, destination, dest_path_type, CURRENT_NODE))
                 db_id = cur.execute("SELECT id FROM syncFeedInfo ORDER BY id DESC LIMIT 1;").fetchone()[0]
-                length = file_list_transactions(cur, db_id, file_list)
+                length = file_list_insert_db_transactions(cur, db_id, file_list)
                 db_connection.commit()
     except Exception as e:
         print("Failed to update the database. Reason: ", e)
@@ -144,25 +142,27 @@ def update_entry_source(db_id) -> None:
     is_input_valid = False
     while not is_input_valid:
         source_folder = input("Enter source folder: ")
-        is_input_valid, source_path_type = id_valid_path(source_folder)
+        is_input_valid, source_path_type = is_valid_path(source_folder)
     with closing(sqlite3.connect(DB_PATH)) as db_connection:
         with closing(db_connection.cursor()) as cur:
             cur.execute("SELECT sourceFolder FROM syncFeedInfo WHERE id = ?;", (db_id,))
             old_source_folder = cur.fetchone()[0]
-            if old_source_folder != source_folder:
-                file_search_answer = input("This will remove the file information.\nDo you want to continue? [Y/N] ")
-                if file_search_answer.lower() == 'y':
+    if old_source_folder != source_folder:
+        file_search_answer = input("This will remove the file information.\nDo you want to continue? [Y/N] ")
+        if file_search_answer.lower() == 'y':
+            with closing(sqlite3.connect(DB_PATH)) as db_connection:
+                with closing(db_connection.cursor()) as cur:
                     cur.execute("DELETE FROM folderContent WHERE syncFeedInfo_id = ?;", (db_id,))
                     file_list = get_file_names(source_folder)
                     if len(file_list) == 0:
                         print("No files found.")
                         return
-                    length = file_list_transactions(cur, db_id, file_list)
+                    length = file_list_insert_db_transactions(cur, db_id, file_list)
                     cur.execute("UPDATE syncFeedInfo SET sourceFolder = ?, sourcePathType = ? WHERE id = ?;", (source_folder, source_path_type, db_id))
                     db_connection.commit()
                     print(f"Source folder was updated, with {length} file(s) added.")
-            else:
-                print("New source folder is the same as the old one. No changes were made.")
+    else:
+        print("New source folder is the same as the old one. No changes were made.")
 
 def read_entries():
     with closing(sqlite3.connect(DB_PATH)) as db_connection:
@@ -188,16 +188,40 @@ def change_status(db_id, status) -> None:
         print(f"An error occurred: {e}")
 
 def enable_disable_files(db_id, file_state, file_name):
-    with closing(sqlite3.connect(DB_PATH)) as db_connection:
-        with closing(db_connection.cursor()) as cur:
-            cur.execute("UPDATE foldercontent SET enabled = ? WHERE syncFeedInfo_id = ? AND fileName = ?;", (file_state, db_id, file_name))
-            db_connection.commit()
+    try:
+        with closing(sqlite3.connect(DB_PATH)) as db_connection:
+            with closing(db_connection.cursor()) as cur:
+                cur.execute("UPDATE foldercontent SET enabled = ? WHERE syncFeedInfo_id = ? AND fileName = ?;", (file_state, db_id, file_name))
+                db_connection.commit()
+    except sqlite3.Error as e:
+        print(f"An error occurred: {e}")
 
 def enable_disable_files_by_extension(db_id, file_extension, file_state):
-    with closing(sqlite3.connect(DB_PATH)) as db_connection:
-        with closing(db_connection.cursor()) as cur:
-            cur.execute("UPDATE folderContent SET enabled = ? WHERE syncFeedInfo_id = ? AND fileName LIKE '%' || ? || '%';", (file_state, db_id, file_extension))
-            db_connection.commit()
+    try:
+        with closing(sqlite3.connect(DB_PATH)) as db_connection:
+            with closing(db_connection.cursor()) as cur:
+                cur.execute("UPDATE folderContent SET enabled = ? WHERE syncFeedInfo_id = ? AND fileName LIKE '%' || ? || '';", (file_state, db_id, file_extension))
+                db_connection.commit()
+    except sqlite3.Error as e:
+            print(f"An error occurred: {e}")
+
+def advance_current_entry(curr_id) -> None:
+    """
+    Advances the current file by 1 in the entry with the given id.
+    :param curr_id: The id of the entry to advance the current file.
+    :return: None
+    """
+    try:
+        with closing(sqlite3.connect(DB_PATH)) as db_connection:
+            with closing(db_connection.cursor()) as cur:
+                cur.execute("SELECT current_id FROM syncFeedInfo WHERE id = ?;", (curr_id,))
+                current_id = cur.fetchone()[0]
+                cur.execute("UPDATE syncFeedInfo SET current_id = ? WHERE id = ?;", (current_id + 1, curr_id))
+                db_connection.commit()
+    except ValueError:
+        print("Invalid ID! Try Again...")
+    except sqlite3.Error as e:
+        print(f"An error occurred: {e}")
 
 def edit_file_state(db_id) -> None:
     while True:
@@ -230,25 +254,33 @@ def edit_menu() -> None:
         print("2. Update destination folder")
         print("3. Delete entry")
         print("4. Enable/disable files")
+        print("S. Setting")
         print("Q. Go back")
         option = input("Select an option: ")
-
-        if option == '1':
-            curr_id = int(input("Enter id of the entry to update: "))
-            update_entry_source(curr_id)
-        elif option == '2':
-            curr_id = int(input("Enter id of the entry to update: "))
-            update_entry_destination(curr_id)
-        elif option == '3':
-            curr_id = int(input("Enter id of the entry to delete: "))
-            delete_entry(curr_id)
-        elif option == '4':
-            curr_id = int(input("Enter id of the source folder to edit: "))
-            edit_file_state(curr_id)
-        elif option.lower() == 'q':
-            break
-        else:
+        try:
+            if option == '1':
+                curr_id = int(input("Enter id of the entry to update: "))
+                update_entry_source(curr_id)
+            elif option == '2':
+                curr_id = int(input("Enter id of the entry to update: "))
+                update_entry_destination(curr_id)
+            elif option == '3':
+                curr_id = int(input("Enter id of the entry to delete: "))
+                delete_entry(curr_id)
+            elif option == '4':
+                curr_id = int(input("Enter id of the source folder to edit: "))
+                edit_file_state(curr_id)
+            option = option.lower()
+            if option == 's':
+                print('setting not implemented')
+                ## toggle logging
+            elif option == 'q':
+                break
+            else:
+                print("Invalid option, please try again.")
+        except ValueError:
             print("Invalid option, please try again.")
+
 
 def main() -> None:
     while True:
@@ -257,6 +289,7 @@ def main() -> None:
         print("2. Edit entries")
         print("3. Enable entry")
         print("4. Disable entry")
+        print("5. Advance Current File by n")
         print("Q. Quit")
         option = input("Select an option: ")
 
@@ -276,10 +309,36 @@ def main() -> None:
                 change_status(curr_id, 0)
             except ValueError:
                 print("Invalid ID! Try Again...")
+        elif option == '5':
+            try:
+                curr_id = int(input("Enter id of the entry to advance the current file: "))
+                advance_current_entry(curr_id)
+            except ValueError:
+                print("Invalid ID! Try Again...")
         elif option.lower() == 'q':
             break
         else:
             print("Invalid option, please try again.")
+
+def perform_past_file_check_and_delete(cur, dest_file, list_pos, list_id) -> None:
+    if list_pos > 0:
+        result2 = cur.execute("SELECT fileName FROM folderContent WHERE syncFeedInfo_id = ? AND listOrder = ?", (list_id, list_pos - 1)).fetchone()
+        if result2 is not None:
+            previous_file = os.path.join(dest_file[:dest_file.rfind('\\')], result2[0])
+            if os.path.isfile(previous_file):
+                os.remove(previous_file)
+                print(f'Deleted {previous_file}')
+
+def perform_file_check_and_move(cur, src_file: str, dest_file: str, list_pos, list_id) -> None:
+    if not os.path.isfile(dest_file):
+        try:
+            shutil.copy(src_file, dest_file)
+            print(f'Copied {src_file} to {dest_file}')
+            perform_past_file_check_and_delete(cur, dest_file, list_pos, list_id)
+        except FileNotFoundError:
+            print(f'Could not copy {src_file} to {dest_file}. {src_file} not found')
+    else:
+        perform_past_file_check_and_delete(cur, dest_file, list_pos, list_id)
 
 if __name__ == "__main__":
     # Check command line arguments
@@ -298,6 +357,7 @@ if __name__ == "__main__":
                         sourcePathType CHAR(1) NOT NULL,
                         destinationFolder TEXT NOT NULL,
                         destinationPathType CHAR(1) NOT NULL,
+                        current_id INTEGER NOT NULL DEFAULT 0,
                         dateCreated DATETIME DEFAULT CURRENT_TIMESTAMP,
                         pcName TEXT,
                         enabled INTEGER DEFAULT 1
@@ -373,6 +433,9 @@ if __name__ == "__main__":
                             if version_list[3] == 0:
                                 cursor.execute("ALTER TABLE syncFeedInfo ADD COLUMN pcName TEXT;")
                                 version_list[3] = 1
+                            if version_list[3] == 1:
+                                cursor.execute("ALTER TABLE syncFeedInfo ADD COLUMN current_id INTEGER NOT NULL DEFAULT 0;")
+                                version_list[3] = 2
                             cursor.execute("INSERT INTO version (major, minor, patch) VALUES (?, ?, ?)", tuple(version_list[1:]))
                             print(f'Database upgraded to version {'.'.join(str(x) for x in version_list[1:])}')
                         conn.commit()
@@ -387,12 +450,37 @@ if __name__ == "__main__":
                         version = cursor.fetchone()
                         if '.'.join(str(x) for x in version) == CURRENT_DATABASE_VERSION:
                             print(f"Current database version: {'.'.join(str(x) for x in version)}")
-                            result = cursor.execute("SELECT * FROM syncfeedinfo WHERE enabled = 1 AND pcName = (?);", (CURRENT_NODE,)).fetchall()
+                            result = cursor.execute("SELECT syncFeedInfo.sourceFolder, syncFeedInfo.destinationFolder, fileName, listOrder, syncFeedInfo_id FROM folderContent JOIN syncFeedInfo ON syncFeedInfo.id = syncFeedInfo_id WHERE syncFeedInfo.enabled = 1 AND syncfeedinfo.pcName = ? AND folderContent.listOrder = syncFeedInfo.current_id;", (CURRENT_NODE,)).fetchall()
+                            print(result)
                             if len(result) == 0:
                                 print("Please run the script with the /m argument to create or access the database.")
                             else:
+                                network_sources_dict = {}
+                                network_host_list = []
                                 for line in result:
-                                    print(line)
+                                    source_file = os.path.join(line[0], line[2])
+                                    destination_file = os.path.join(line[1], line[2])
+                                    is_input_valid, path_type = is_valid_path(line[0], False)
+                                    is_input_valid_des, path_type_des = is_valid_path(line[1], False)
+                                    if is_input_valid and is_input_valid_des:
+                                        if path_type == 'N' or path_type_des == 'N':
+                                            if path_type == 'N':
+                                                host_name = source_file[2:source_file[2:].find('\\') + 2]
+                                            elif path_type_des == 'N':
+                                                host_name = destination_file[2:destination_file[2:].find('\\') + 2]
+                                            if host_name in network_host_list:
+                                                network_sources_dict[host_name].append(line)
+                                            else:
+                                                network_host_list.append(host_name)
+                                                network_sources_dict[host_name] = [line]
+                                        else:
+                                            perform_file_check_and_move(cursor, source_file, destination_file, line[3], line[4])
+                                for host_name in network_host_list:
+                                    for line in network_sources_dict[host_name]:
+                                        if os.path.isdir(line[0]):
+                                            source_file = os.path.join(line[0], line[2])
+                                            destination_file = os.path.join(line[1], line[2])
+                                            perform_file_check_and_move(cursor, source_file, destination_file, line[3], line[4])
                         else:
                             print(f"Current database out of date, run /m to update.")
             else:
